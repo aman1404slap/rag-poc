@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video RAG — Dashboard</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --surface-2: #f8fafc;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-light: #eff6ff;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --sidebar-w: 220px;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04);
+      --shadow-lg: 0 10px 25px rgba(15,23,42,0.08);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── App shell ─────────────────────────────────────────────────── */
+    .app { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--text);
+      color: #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 100;
+    }
+    .sidebar-brand {
+      padding: 1.25rem 1rem 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sidebar-brand .logo {
+      display: flex; align-items: center; gap: 0.6rem;
+      font-weight: 700; font-size: 0.95rem; color: #fff;
+    }
+    .sidebar-brand .logo svg { flex-shrink: 0; }
+    .sidebar-brand p {
+      margin: 0.35rem 0 0 2rem;
+      font-size: 0.7rem; color: #94a3b8;
+    }
+    .sidebar-nav { flex: 1; padding: 0.75rem 0.5rem; }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+    .nav-item.active { background: var(--accent); color: #fff; }
+    .nav-item svg { flex-shrink: 0; opacity: 0.85; }
+    .sidebar-footer {
+      padding: 0.75rem 1rem;
+      font-size: 0.68rem;
+      color: #64748b;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .main {
+      flex: 1;
+      margin-left: var(--sidebar-w);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: var(--shadow);
+    }
+    .topbar-title h1 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+    .topbar-title p { margin: 0; font-size: 0.75rem; color: var(--muted); }
+    .kpi-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .kpi-pill {
+      display: flex; align-items: center; gap: 0.4rem;
+      padding: 0.35rem 0.65rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.72rem;
+    }
+    .kpi-pill strong { font-weight: 700; color: var(--text); }
+    .kpi-pill span { color: var(--muted); }
+
+    .content { flex: 1; padding: 1.25rem 1.5rem 2rem; }
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Cards & panels ────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .card-body { padding: 1rem; }
+
+    /* ── KPI grid (library) ────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      box-shadow: var(--shadow);
+    }
+    .kpi-card .value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+    .kpi-card .label { font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
+    .kpi-card.accent .value { color: var(--accent); }
+    .kpi-card.success .value { color: var(--success); }
+    .kpi-card.warning .value { color: var(--warning); }
+
+    /* ── Search ────────────────────────────────────────────────────── */
+    .search-bar-wrap { margin-bottom: 1rem; }
+    .search-bar {
+      display: flex;
+      gap: 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.4rem 0.4rem 0.4rem 1rem;
+      box-shadow: var(--shadow);
+    }
+    .search-bar input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 0.92rem;
+      background: transparent;
+      padding: 0.35rem 0;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.45rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--border); }
+    .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.65rem;
+    }
+    .chip {
+      font-size: 0.72rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .chip:hover { border-color: #93c5fd; color: var(--accent); }
+    .chip.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+    .search-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .search-layout { grid-template-columns: 1fr; }
+      .preview-panel { position: static !important; }
+    }
+
+    .results-panel { display: flex; flex-direction: column; min-height: 0; }
+    .results-scroll {
+      max-height: calc(100vh - 320px);
+      min-height: 280px;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+    .results-meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 0 0.5rem 0.5rem;
+    }
+
+    .result-card {
+      display: flex;
+      gap: 0.65rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      margin-bottom: 0.45rem;
+      background: var(--surface);
+      transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+    }
+    .result-card:hover {
+      border-color: #93c5fd;
+      box-shadow: var(--shadow-lg);
+      transform: translateY(-1px);
+    }
+    .result-card.active {
+      border-color: var(--accent);
+      border-left-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+    .result-card.score-high { border-left-color: var(--success); }
+    .result-card.score-mid { border-left-color: var(--accent); }
+    .result-card.score-low { border-left-color: #cbd5e1; }
+
+    .result-card img {
+      width: 108px; height: 61px; object-fit: cover;
+      border-radius: 6px; flex-shrink: 0; background: var(--surface-2);
+    }
+    .result-meta { flex: 1; min-width: 0; }
+    .result-header { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+    .result-name { font-size: 0.83rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .score-badge {
+      flex-shrink: 0; font-size: 0.7rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px;
+      background: var(--accent-light); color: var(--accent);
+    }
+    .result-time { font-size: 0.72rem; color: var(--muted); margin: 2px 0 3px; }
+    .result-caption { font-size: 0.78rem; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .tag { font-size: 0.66rem; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface-2); }
+    .tag.action { border-color: #fca5a5; color: #b91c1c; background: #fff1f2; }
+    .tag.object { border-color: #86efac; color: #15803d; background: #f0fdf4; }
+    .tag.ocr { border-color: #fcd34d; color: #92400e; background: #fffbeb; }
+    .tag small { font-weight: 600; opacity: 0.75; }
+    .score-breakdown { font-size: 0.72rem; color: var(--muted); }
+
+    .preview-panel {
+      position: sticky;
+      top: 5.5rem;
+    }
+    #no-preview {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 200px; border: 2px dashed var(--border); border-radius: var(--radius);
+      color: var(--muted); font-size: 0.85rem; background: var(--surface-2);
+      text-align: center; gap: 0.5rem;
+    }
+    #preview-video {
+      width: 100%; border-radius: var(--radius);
+      display: none; border: 1px solid var(--border);
+      background: #000;
+    }
+    .clip-details {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: var(--surface-2);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+    .clip-details dt { font-weight: 600; color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.5rem; }
+    .clip-details dt:first-child { margin-top: 0; }
+    .clip-details dd { margin: 0.15rem 0 0; }
+
+    /* ── Pagination ────────────────────────────────────────────────── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.65rem 0.5rem 0;
+      border-top: 1px solid var(--border);
+      margin-top: 0.25rem;
+    }
+    .page-btns { display: flex; align-items: center; gap: 0.25rem; }
+    .page-btn {
+      min-width: 32px; height: 32px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.78rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .page-info { font-size: 0.75rem; color: var(--muted); }
+    .page-size-select {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.4rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+
+    /* ── Library table ─────────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .toolbar input, .toolbar select {
+      font-size: 0.82rem;
+      padding: 0.4rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .toolbar input { flex: 1; min-width: 160px; max-width: 280px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 0.55rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--surface-2);
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { color: var(--text); }
+    th.sorted { color: var(--accent); }
+    tr:hover td { background: var(--surface-2); }
+    tr:last-child td { border-bottom: none; }
+
+    .pill {
+      font-size: 0.68rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid; display: inline-block;
+    }
+    .pill-indexed { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+    .pill-processing, .pill-pending { color: #92400e; border-color: #fcd34d; background: #fffbeb; }
+    .pill-error { color: #b91c1c; border-color: #fca5a5; background: #fff1f2; }
+
+    /* ── Upload ────────────────────────────────────────────────────── */
+    .upload-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 768px) { .upload-grid { grid-template-columns: 1fr; } }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      background: var(--surface-2);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+    }
+    .dropzone svg { color: var(--muted); margin-bottom: 0.5rem; }
+    .dropzone p { margin: 0.25rem 0; font-size: 0.85rem; }
+    .dropzone .hint { font-size: 0.72rem; color: var(--muted); }
+    .dropzone input[type=file] { display: none; }
+
+    .job-item {
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.5rem;
+      background: var(--surface);
+    }
+    .job-item .job-name { font-weight: 600; font-size: 0.85rem; }
+    .job-item .job-step { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .job-item progress { width: 100%; height: 6px; margin-top: 0.5rem; }
+
+    /* ── Empty & skeleton ──────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+    }
+    .empty-state h3 { margin: 0 0 0.35rem; font-size: 0.95rem; color: var(--text); }
+    .empty-state p { margin: 0; font-size: 0.82rem; }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface-2) 25%, #e2e8f0 50%, var(--surface-2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+      border-radius: 6px;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .skeleton-card { height: 72px; margin-bottom: 0.45rem; }
+    .skeleton-row { height: 36px; margin-bottom: 0.35rem; }
+
+    /* ── Toasts ────────────────────────────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .toast {
+      padding: 0.65rem 1rem;
+      background: var(--text);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      box-shadow: var(--shadow-lg);
+      animation: slideIn 0.25s ease;
+      max-width: 320px;
+    }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--danger); }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @media (max-width: 640px) {
+      .sidebar { width: 64px; }
+      .sidebar-brand p, .nav-item span, .sidebar-footer { display: none; }
+      .sidebar-brand .logo span { display: none; }
+      .main { margin-left: 64px; }
+      .kpi-pills { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <span>Video RAG</span>
+      </div>
+      <p>Semantic clip search</p>
+    </div>
+    <nav class="sidebar-nav">
+      <button type="button" class="nav-item active" data-route="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <span>Search</span>
+      </button>
+      <button type="button" class="nav-item" data-route="library">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span>Library</span>
+      </button>
+      <button type="button" class="nav-item" data-route="upload">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>Upload</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">Video RAG v1.0</div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="view-title">Search</h1>
+        <p id="view-subtitle">Find clips by object, action, or description</p>
+      </div>
+      <div class="kpi-pills" id="kpi-pills">
+        <div class="kpi-pill"><strong id="kpi-videos">—</strong><span>videos</span></div>
+        <div class="kpi-pill"><strong id="kpi-indexed">—</strong><span>indexed</span></div>
+        <div class="kpi-pill"><strong id="kpi-clips">—</strong><span>clips</span></div>
+        <div class="kpi-pill"><strong id="kpi-duration">—</strong><span>total</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- Search view -->
+      <section id="view-search" class="view active">
+        <div class="search-bar-wrap">
+          <form id="search-form" class="search-bar">
+            <input type="search" id="query-input" placeholder="Search by object, action, or description…" autocomplete="off">
+            <button type="submit" class="btn btn-primary">Search</button>
+          </form>
+          <div class="filter-chips" id="search-filters">
+            <button type="button" class="chip" data-filter="score60">Score ≥ 60%</button>
+            <button type="button" class="chip" data-filter="score80">Score ≥ 80%</button>
+            <button type="button" class="chip" data-filter="hasAction">Has action</button>
+            <button type="button" class="chip" data-filter="hasOcr">Has OCR</button>
+          </div>
+        </div>
+
+        <div class="search-layout">
+          <div class="card results-panel">
+            <div class="card-header">
+              <span>Results</span>
+              <span id="results-count" class="results-meta" style="padding:0;border:0;margin:0"></span>
+            </div>
+            <div class="results-scroll" id="results-scroll">
+              <div id="results-list">
+                <div class="empty-state">
+                  <h3>Start searching</h3>
+                  <p>Enter a query above to find matching video clips.</p>
+                </div>
+              </div>
+            </div>
+            <div class="pagination" id="search-pagination" style="display:none">
+              <div class="page-btns" id="search-page-btns"></div>
+              <div class="page-info" id="search-page-info"></div>
+              <select class="page-size-select" id="search-page-size" title="Results per page">
+                <option value="10">10 / page</option>
+                <option value="15">15 / page</option>
+                <option value="20">20 / page</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card preview-panel">
+            <div class="card-header">Preview</div>
+            <div class="card-body">
+              <div id="no-preview">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Select a result to preview
+              </div>
+              <video id="preview-video" controls></video>
+              <dl class="clip-details" id="clip-details" style="display:none"></dl>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Library view -->
+      <section id="view-library" class="view">
+        <div class="kpi-grid" id="library-kpis">
+          <div class="kpi-card accent"><div class="value" id="lib-kpi-total">—</div><div class="label">Total videos</div></div>
+          <div class="kpi-card success"><div class="value" id="lib-kpi-indexed">—</div><div class="label">Indexed</div></div>
+          <div class="kpi-card warning"><div class="value" id="lib-kpi-processing">—</div><div class="label">Processing</div></div>
+          <div class="kpi-card"><div class="value" id="lib-kpi-clips">—</div><div class="label">Total clips</div></div>
+          <div class="kpi-card"><div class="value" id="lib-kpi-duration">—</div><div class="label">Total duration</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Indexed videos</div>
+          <div class="card-body">
+            <div class="toolbar">
+              <input type="search" id="lib-search" placeholder="Filter by filename…">
+              <select id="lib-status">
+                <option value="">All statuses</option>
+                <option value="indexed">Indexed</option>
+                <option value="processing">Processing</option>
+                <option value="pending">Pending</option>
+                <option value="error">Error</option>
+              </select>
+            </div>
+            <div class="table-wrap" id="videos-table">
+              <div class="empty-state"><p>Loading…</p></div>
+            </div>
+            <div class="pagination" id="lib-pagination" style="display:none">
+              <div class="page-btns" id="lib-page-btns"></div>
+              <div class="page-info" id="lib-page-info"></div>
+              <select class="page-size-select" id="lib-page-size">
+                <option value="10">10 / page</option>
+                <option value="20">20 / page</option>
+                <option value="50">50 / page</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Upload view -->
+      <section id="view-upload" class="view">
+        <div class="upload-grid">
+          <div class="card">
+            <div class="card-header">Upload video</div>
+            <div class="card-body">
+              <div class="dropzone" id="dropzone">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <p><strong>Drop video here</strong> or click to browse</p>
+                <p class="hint">MP4, MOV, AVI, MKV, WebM</p>
+                <input type="file" id="file-input" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm">
+              </div>
+              <form id="upload-form" style="display:none">
+                {% csrf_token %}
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">Active jobs</div>
+            <div class="card-body" id="active-jobs">
+              <div class="empty-state"><p>No active indexing jobs</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1rem">
+          <div class="card-header">Recently indexed</div>
+          <div class="card-body" id="recent-indexed">
+            <div class="empty-state"><p>Nothing indexed yet</p></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+
+const ROUTES = {
+  search:  { title: 'Search',  subtitle: 'Find clips by object, action, or description' },
+  library: { title: 'Library', subtitle: 'Browse and manage indexed videos' },
+  upload:  { title: 'Upload',  subtitle: 'Add videos and track indexing jobs' },
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  route: 'search',
+  search: {
+    query: '',
+    allResults: [],
+    page: 1,
+    pageSize: 10,
+    filters: new Set(),
+    selectedClipId: null,
+  },
+  library: {
+    page: 1,
+    pageSize: 10,
+    status: '',
+    q: '',
+    sort: '-created_at',
+    total: 0,
+    pages: 0,
+  },
+  upload: {
+    activeJobs: new Map(),
+  },
+};
+
+let statsInterval = null;
+let jobsPollInterval = null;
+let libSearchDebounce = null;
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtTime(s) {
+  if (s == null || isNaN(s)) return '—';
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+}
+function fmtDuration(totalSec) {
+  if (!totalSec) return '0m';
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+function scoreClass(score) {
+  const pct = score * 100;
+  if (pct >= 80) return 'score-high';
+  if (pct >= 60) return 'score-mid';
+  return 'score-low';
+}
+function pctLabel(c) {
+  if (c == null || isNaN(c)) return '';
+  return ` <small>${Math.round(c * 100)}%</small>`;
+}
+function buildResultTags(r) {
+  const parts = [];
+  const actions = r.actions || (r.action_label ? [{ label: r.action_label, confidence: r.action_confidence }] : []);
+  actions.slice(0, 4).forEach(a => {
+    if (a && a.label) parts.push(`<span class="tag action">${esc(a.label)}${pctLabel(a.confidence)}</span>`);
+  });
+  (r.objects || []).slice(0, 5).forEach(o => {
+    const label = typeof o === 'string' ? o : o.label;
+    const conf = typeof o === 'object' ? o.confidence : null;
+    if (label) parts.push(`<span class="tag object">${esc(label)}${pctLabel(conf)}</span>`);
+  });
+  const ocrList = r.ocr || [];
+  if (ocrList.length) {
+    ocrList.slice(0, 3).forEach(b => {
+      const text = (b.text || '').slice(0, 24);
+      if (text) parts.push(`<span class="tag ocr" title="${esc(b.text)}">OCR: ${esc(text)}${pctLabel(b.confidence)}</span>`);
+    });
+  } else if (r.ocr_text) {
+    parts.push(`<span class="tag ocr">OCR</span>`);
+  }
+  return parts.join('');
+}
+
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── Router ────────────────────────────────────────────────────────────────────
+function getRouteFromHash() {
+  const h = (location.hash || '#search').replace(/^#\/?/, '');
+  return ROUTES[h] ? h : 'search';
+}
+
+function navigate(route, { syncHash = true } = {}) {
+  if (!ROUTES[route]) route = 'search';
+  state.route = route;
+
+  const wantHash = '#' + route;
+  if (syncHash && location.hash !== wantHash) {
+    location.hash = wantHash;
+  }
+
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.route === route);
+  });
+  document.querySelectorAll('.view').forEach(v => {
+    v.classList.toggle('active', v.id === 'view-' + route);
+  });
+
+  const meta = ROUTES[route];
+  document.getElementById('view-title').textContent = meta.title;
+  document.getElementById('view-subtitle').textContent = meta.subtitle;
+
+  if (route === 'library') loadLibrary();
+  if (route === 'upload') {
+    loadActiveJobs();
+    loadRecentIndexed();
+    startJobsPoll();
+  } else {
+    stopJobsPoll();
+  }
+}
+
+window.addEventListener('hashchange', () => navigate(getRouteFromHash(), { syncHash: false }));
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => navigate(btn.dataset.route));
+});
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+async function refreshStats() {
+  try {
+    const s = await fetch('/api/stats/').then(r => r.json());
+    document.getElementById('kpi-videos').textContent = s.videos_total;
+    document.getElementById('kpi-indexed').textContent = s.videos_indexed;
+    document.getElementById('kpi-clips').textContent = s.clips_total;
+    document.getElementById('kpi-duration').textContent = fmtDuration(s.duration_sec);
+
+    document.getElementById('lib-kpi-total').textContent = s.videos_total;
+    document.getElementById('lib-kpi-indexed').textContent = s.videos_indexed;
+    document.getElementById('lib-kpi-processing').textContent = s.videos_processing;
+    document.getElementById('lib-kpi-clips').textContent = s.clips_total;
+    document.getElementById('lib-kpi-duration').textContent = fmtDuration(s.duration_sec);
+  } catch (_) {}
+}
+
+function startStatsPoll() {
+  refreshStats();
+  if (!statsInterval) statsInterval = setInterval(refreshStats, 10000);
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function applySearchFilters(results) {
+  const f = state.search.filters;
+  return results.filter(r => {
+    if (f.has('score60') && r.score < 0.6) return false;
+    if (f.has('score80') && r.score < 0.8) return false;
+    if (f.has('hasAction') && !r.action_label) return false;
+    if (f.has('hasOcr') && !r.ocr_text) return false;
+    return true;
+  });
+}
+
+function getFilteredResults() {
+  return applySearchFilters(state.search.allResults);
+}
+
+function renderSearchPage() {
+  const filtered = getFilteredResults();
+  const { page, pageSize } = state.search;
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pages);
+  state.search.page = safePage;
+
+  const start = (safePage - 1) * pageSize;
+  const slice = filtered.slice(start, start + pageSize);
+
+  const list = document.getElementById('results-list');
+  const countEl = document.getElementById('results-count');
+
+  if (!state.search.query) {
+    countEl.textContent = '';
+    list.innerHTML = `<div class="empty-state"><h3>Start searching</h3><p>Enter a query above to find matching video clips.</p></div>`;
+    document.getElementById('search-pagination').style.display = 'none';
+    return;
+  }
+
+  if (!total) {
+    countEl.textContent = 'No results match your filters';
+    list.innerHTML = `<div class="empty-state"><h3>No results</h3><p>Try a different query or clear filters.</p></div>`;
+    document.getElementById('search-pagination').style.display = 'none';
+    return;
+  }
+
+  countEl.textContent = `${total} clip(s) · page ${safePage} of ${pages}`;
+  list.innerHTML = '';
+  slice.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'result-card ' + scoreClass(r.score);
+    if (r.clip_id === state.search.selectedClipId) card.classList.add('active');
+
+    const tags = buildResultTags(r);
+
+    card.innerHTML = `
+      <img src="${esc(r.keyframe_url)}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="result-meta">
+        <div class="result-header">
+          <span class="result-name" title="${esc(r.video_filename)}">${esc(r.video_filename)}</span>
+          <span class="score-badge">${Math.round(r.score * 100)}%</span>
+        </div>
+        <div class="result-time">${fmtTime(r.start_sec)} – ${fmtTime(r.end_sec)}</div>
+        <div class="result-caption" title="${esc(r.caption)}">${esc(r.caption) || '<em style="color:#94a3b8">no caption</em>'}</div>
+        <div class="tags">${tags}</div>
+      </div>`;
+
+    card.addEventListener('click', () => {
+      state.search.selectedClipId = r.clip_id;
+      document.querySelectorAll('.result-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      previewClip(r);
+    });
+    list.appendChild(card);
+  });
+
+  renderPagination('search', safePage, pages, total, pageSize, p => {
+    state.search.page = p;
+    renderSearchPage();
+    document.getElementById('results-scroll').scrollTop = 0;
+  });
+  document.getElementById('search-pagination').style.display = pages > 1 || total > 10 ? 'flex' : 'none';
+}
+
+function showSearchSkeleton() {
+  document.getElementById('results-list').innerHTML =
+    Array(5).fill('<div class="skeleton skeleton-card"></div>').join('');
+}
+
+document.getElementById('search-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const q = document.getElementById('query-input').value.trim();
+  if (!q) return;
+
+  state.search.query = q;
+  state.search.page = 1;
+  state.search.selectedClipId = null;
+  document.getElementById('results-count').textContent = 'Searching…';
+  showSearchSkeleton();
+
+  try {
+    const resp = await fetch('/api/search/?q=' + encodeURIComponent(q) + '&n=50');
+    const data = await resp.json();
+    if (data.error) {
+      toast('Search failed: ' + data.error, 'error');
+      state.search.allResults = [];
+    } else {
+      state.search.allResults = data.results || [];
+    }
+    renderSearchPage();
+  } catch (err) {
+    toast('Search failed', 'error');
+    state.search.allResults = [];
+    renderSearchPage();
+  }
+});
+
+document.querySelectorAll('#search-filters .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const key = chip.dataset.filter;
+    if (state.search.filters.has(key)) {
+      state.search.filters.delete(key);
+      chip.classList.remove('active');
+    } else {
+      state.search.filters.add(key);
+      chip.classList.add('active');
+    }
+    state.search.page = 1;
+    renderSearchPage();
+  });
+});
+
+document.getElementById('search-page-size').addEventListener('change', e => {
+  state.search.pageSize = parseInt(e.target.value, 10);
+  state.search.page = 1;
+  renderSearchPage();
+});
+
+function previewClip(r) {
+  const video = document.getElementById('preview-video');
+  const noPreview = document.getElementById('no-preview');
+  const details = document.getElementById('clip-details');
+
+  noPreview.style.display = 'none';
+  video.style.display = 'block';
+  details.style.display = 'block';
+
+  const url = window.location.origin + r.video_url;
+  if (video.src !== url) { video.src = url; video.load(); }
+
+  function seek() { video.currentTime = r.start_sec; video.play().catch(() => {}); }
+  video.addEventListener('loadedmetadata', seek, { once: true });
+  if (video.readyState >= 1) seek();
+
+  function onTimeUpdate() {
+    if (video.currentTime >= r.end_sec) {
+      video.pause();
+      video.removeEventListener('timeupdate', onTimeUpdate);
+    }
+  }
+  video.removeEventListener('timeupdate', window._stopAt);
+  video.addEventListener('timeupdate', onTimeUpdate);
+  window._stopAt = onTimeUpdate;
+
+  const actions = r.actions || (r.action_label ? [{ label: r.action_label, confidence: r.action_confidence }] : []);
+  const actionLines = actions.map(a => a.label ? `${esc(a.label)} (${Math.round((a.confidence || 0) * 100)}%)` : '').filter(Boolean).join(', ');
+  const objectLines = (r.objects || []).slice(0, 10).map(o => {
+    const label = typeof o === 'string' ? o : o.label;
+    const conf = typeof o === 'object' ? o.confidence : null;
+    return label ? `${esc(label)}${conf != null ? ` (${Math.round(conf * 100)}%)` : ''}` : '';
+  }).filter(Boolean).join(', ');
+  const ocrLines = (r.ocr || []).map(b => `${esc((b.text || '').slice(0, 80))} (${Math.round((b.confidence || 0) * 100)}%)`).join('<br>');
+
+  details.innerHTML = `
+    <dt>Overall match</dt><dd><strong>${Math.round(r.score * 100)}%</strong></dd>
+    <dt>Breakdown</dt><dd class="score-breakdown">
+      Semantic ${Math.round((r.semantic || 0) * 100)}% ·
+      Tag match ${Math.round((r.tag_match || 0) * 100)}% ·
+      Text ${Math.round((r.text_sim || 0) * 100)}% ·
+      Visual ${Math.round((r.visual_sim || 0) * 100)}%
+    </dd>
+    <dt>Video</dt><dd>${esc(r.video_filename)}</dd>
+    <dt>Time range</dt><dd>${fmtTime(r.start_sec)} – ${fmtTime(r.end_sec)}</dd>
+    ${r.caption ? `<dt>Caption</dt><dd>${esc(r.caption)}${r.caption_confidence != null ? ` <small>(${Math.round(r.caption_confidence * 100)}%)</small>` : ''}</dd>` : ''}
+    ${actionLines ? `<dt>Actions</dt><dd>${actionLines}</dd>` : ''}
+    ${objectLines ? `<dt>Objects</dt><dd>${objectLines}</dd>` : ''}
+    ${ocrLines ? `<dt>OCR</dt><dd>${ocrLines}</dd>` : (r.ocr_text ? `<dt>OCR</dt><dd><code>${esc(r.ocr_text.slice(0,200))}</code></dd>` : '')}
+  `;
+}
+
+// ── Pagination helper ─────────────────────────────────────────────────────────
+function renderPagination(prefix, page, pages, total, pageSize, onPage) {
+  const btns = document.getElementById(prefix + '-page-btns');
+  const info = document.getElementById(prefix + '-page-info');
+  btns.innerHTML = '';
+
+  const prev = document.createElement('button');
+  prev.className = 'page-btn';
+  prev.textContent = '‹';
+  prev.disabled = page <= 1;
+  prev.addEventListener('click', () => onPage(page - 1));
+  btns.appendChild(prev);
+
+  const windowed = buildPageWindow(page, pages);
+  windowed.forEach(p => {
+    if (p === '…') {
+      const span = document.createElement('span');
+      span.className = 'page-btn';
+      span.textContent = '…';
+      span.style.cursor = 'default';
+      span.style.border = 'none';
+      span.style.background = 'transparent';
+      btns.appendChild(span);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'page-btn' + (p === page ? ' active' : '');
+      btn.textContent = p;
+      btn.addEventListener('click', () => onPage(p));
+      btns.appendChild(btn);
+    }
+  });
+
+  const next = document.createElement('button');
+  next.className = 'page-btn';
+  next.textContent = '›';
+  next.disabled = page >= pages;
+  next.addEventListener('click', () => onPage(page + 1));
+  btns.appendChild(next);
+
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+  info.textContent = total ? `${start}–${end} of ${total}` : '';
+}
+
+function buildPageWindow(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = [1];
+  if (current > 3) pages.push('…');
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+  if (current < total - 2) pages.push('…');
+  pages.push(total);
+  return pages;
+}
+
+// ── Library ───────────────────────────────────────────────────────────────────
+async function loadLibrary() {
+  const el = document.getElementById('videos-table');
+  el.innerHTML = Array(6).fill('<div class="skeleton skeleton-row"></div>').join('');
+
+  const { page, pageSize, status, q, sort } = state.library;
+  const params = new URLSearchParams({ page, page_size: pageSize, sort });
+  if (status) params.set('status', status);
+  if (q) params.set('q', q);
+
+  try {
+    const data = await fetch('/api/videos/?' + params).then(r => r.json());
+    state.library.total = data.total;
+    state.library.pages = data.pages;
+    renderLibraryTable(data.videos || []);
+    renderPagination('lib', data.page, data.pages || 1, data.total, data.page_size, p => {
+      state.library.page = p;
+      loadLibrary();
+    });
+    document.getElementById('lib-pagination').style.display =
+      (data.pages || 0) > 1 || data.total > 10 ? 'flex' : 'none';
+  } catch (_) {
+    el.innerHTML = '<div class="empty-state"><p>Failed to load videos</p></div>';
+  }
+}
+
+function renderLibraryTable(videos) {
+  const el = document.getElementById('videos-table');
+  if (!videos.length) {
+    el.innerHTML = `<div class="empty-state">
+      <h3>No videos found</h3>
+      <p>Upload a video or adjust your filters.</p>
+      <button type="button" class="btn btn-primary" style="margin-top:0.75rem" onclick="location.hash='#upload'">Upload video</button>
+    </div>`;
+    return;
+  }
+
+  const sort = state.library.sort;
+  const sortMark = col => {
+    if (sort === col) return ' sorted';
+    if (sort === '-' + col) return ' sorted';
+    return '';
+  };
+
+  const rows = videos.map(v => {
+    const dur = v.duration_sec ? fmtTime(v.duration_sec) : '—';
+    const indexed = v.indexed_at ? new Date(v.indexed_at).toLocaleString() : '—';
+    const note = (v.status === 'processing' || v.status === 'pending')
+      ? ` <span style="color:#92400e;font-size:0.7rem">${v.progress_pct}% — ${esc(v.current_step)}</span>` : '';
+    return `<tr>
+      <td>${esc(v.filename)}</td>
+      <td><span class="pill pill-${v.status}">${v.status}</span>${note}</td>
+      <td>${v.clip_count}</td>
+      <td>${dur}</td>
+      <td>${indexed}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th data-sort="filename" class="${sortMark('filename')}">File</th>
+      <th data-sort="status" class="${sortMark('status')}">Status</th>
+      <th>Clips</th>
+      <th data-sort="duration_sec" class="${sortMark('duration_sec')}">Duration</th>
+      <th data-sort="indexed_at" class="${sortMark('indexed_at')}">Indexed</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  el.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      state.library.sort = state.library.sort === col ? '-' + col : col;
+      state.library.page = 1;
+      loadLibrary();
+    });
+  });
+}
+
+document.getElementById('lib-search').addEventListener('input', e => {
+  clearTimeout(libSearchDebounce);
+  libSearchDebounce = setTimeout(() => {
+    state.library.q = e.target.value.trim();
+    state.library.page = 1;
+    loadLibrary();
+  }, 300);
+});
+
+document.getElementById('lib-status').addEventListener('change', e => {
+  state.library.status = e.target.value;
+  state.library.page = 1;
+  loadLibrary();
+});
+
+document.getElementById('lib-page-size').addEventListener('change', e => {
+  state.library.pageSize = parseInt(e.target.value, 10);
+  state.library.page = 1;
+  loadLibrary();
+});
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('video', file);
+
+  dropzone.style.pointerEvents = 'none';
+  dropzone.querySelector('p strong').textContent = 'Uploading…';
+
+  try {
+    const resp = await fetch('/api/upload/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': CSRF },
+      body: fd,
+    });
+    if (!resp.ok) {
+      toast('Upload failed: ' + await resp.text(), 'error');
+      return;
+    }
+    const { task_id, video_id } = await resp.json();
+    toast('Upload started — indexing in progress', 'success');
+    state.upload.activeJobs.set(task_id, { task_id, video_id, filename: file.name, progress_pct: 0, current_step: 'Queued…', status: 'queued' });
+    renderActiveJobs();
+    pollJob(task_id);
+    refreshStats();
+    loadRecentIndexed();
+  } catch (_) {
+    toast('Upload failed', 'error');
+  } finally {
+    dropzone.style.pointerEvents = '';
+    dropzone.querySelector('p strong').textContent = 'Drop video here';
+    fileInput.value = '';
+  }
+}
+
+function pollJob(taskId) {
+  const interval = setInterval(async () => {
+    try {
+      const d = await fetch('/api/jobs/' + taskId + '/').then(r => r.json());
+      const job = state.upload.activeJobs.get(taskId);
+      if (!job) { clearInterval(interval); return; }
+
+      job.progress_pct = d.progress_pct;
+      job.current_step = d.current_step || d.status;
+      job.status = d.status;
+      job.filename = d.video_filename || job.filename;
+
+      renderActiveJobs();
+
+      if (d.status === 'done') {
+        clearInterval(interval);
+        state.upload.activeJobs.delete(taskId);
+        renderActiveJobs();
+        toast('✓ ' + job.filename + ' indexed', 'success');
+        refreshStats();
+        loadRecentIndexed();
+      }
+      if (d.status === 'error') {
+        clearInterval(interval);
+        job.error = d.error_msg;
+        renderActiveJobs();
+        toast('Indexing failed: ' + (d.error_msg || 'unknown'), 'error');
+      }
+    } catch (_) {}
+  }, 2000);
+}
+
+function renderActiveJobs() {
+  const el = document.getElementById('active-jobs');
+  const jobs = [...state.upload.activeJobs.values()];
+
+  if (!jobs.length) {
+    el.innerHTML = '<div class="empty-state"><p>No active indexing jobs</p></div>';
+    return;
+  }
+
+  el.innerHTML = jobs.map(j => `
+    <div class="job-item">
+      <div class="job-name">${esc(j.filename)}</div>
+      <div class="job-step">${esc(j.current_step)}${j.error ? ' — ' + esc(j.error) : ''}</div>
+      <progress value="${j.progress_pct}" max="100"></progress>
+    </div>
+  `).join('');
+}
+
+async function loadActiveJobs() {
+  try {
+    const data = await fetch('/api/videos/?status=processing&page_size=50').then(r => r.json());
+    const pending = await fetch('/api/videos/?status=pending&page_size=50').then(r => r.json());
+    const all = [...(data.videos || []), ...(pending.videos || [])];
+
+    all.forEach(v => {
+      if (v.task_id && !state.upload.activeJobs.has(v.task_id)) {
+        state.upload.activeJobs.set(v.task_id, {
+          task_id: v.task_id,
+          video_id: v.id,
+          filename: v.filename,
+          progress_pct: v.progress_pct,
+          current_step: v.current_step || v.status,
+          status: v.status,
+        });
+        pollJob(v.task_id);
+      }
+    });
+    renderActiveJobs();
+  } catch (_) {}
+}
+
+async function loadRecentIndexed() {
+  const el = document.getElementById('recent-indexed');
+  try {
+    const data = await fetch('/api/videos/?status=indexed&page_size=5&sort=-indexed_at').then(r => r.json());
+    const videos = data.videos || [];
+    if (!videos.length) {
+      el.innerHTML = '<div class="empty-state"><p>Nothing indexed yet</p></div>';
+      return;
+    }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>File</th><th>Clips</th><th>Duration</th><th>Indexed</th></tr></thead>
+      <tbody>${videos.map(v => `<tr>
+        <td>${esc(v.filename)}</td>
+        <td>${v.clip_count}</td>
+        <td>${v.duration_sec ? fmtTime(v.duration_sec) : '—'}</td>
+        <td>${v.indexed_at ? new Date(v.indexed_at).toLocaleString() : '—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch (_) {
+    el.innerHTML = '<div class="empty-state"><p>Failed to load</p></div>';
+  }
+}
+
+function startJobsPoll() {
+  if (!jobsPollInterval) jobsPollInterval = setInterval(() => {
+    if (state.route === 'upload') {
+      loadActiveJobs();
+      loadRecentIndexed();
+    }
+  }, 5000);
+}
+function stopJobsPoll() {
+  if (jobsPollInterval) { clearInterval(jobsPollInterval); jobsPollInterval = null; }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+startStatsPoll();
+const initialRoute = getRouteFromHash();
+navigate(initialRoute, { syncHash: !location.hash || location.hash === '#/' });
+</script>
+</body>
+</html>

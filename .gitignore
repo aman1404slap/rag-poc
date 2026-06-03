@@ -1,0 +1,9 @@
+.env
+.venv/
+*.pt
+tempo/
+__pycache__/*
+*.pyc
+data/
+.vscode/
+.claude/

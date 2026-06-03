@@ -1,0 +1,34 @@
+# Web
+django>=5.0,<6.0
+python-dotenv>=1.0
+celery>=5.3
+redis>=5.0
+django-celery-results>=2.5
+
+# Video processing (ffmpeg and redis-server must be installed via apt)
+scenedetect>=0.6
+opencv-python>=4.8
+
+# ML / AI — GPU-accelerated via CUDA where available
+torch>=2.0
+torchvision>=0.15
+open_clip_torch>=2.20
+sentence-transformers>=2.7
+transformers>=4.49
+accelerate>=0.27
+bitsandbytes>=0.43
+qwen-vl-utils>=0.0.8
+ultralytics>=8.0         # YOLO object detection (yolo11l.pt)
+
+# OCR — PaddleOCR preferred; EasyOCR kept as fallback
+paddleocr>=2.8
+paddlepaddle>=2.6          # use paddlepaddle-gpu on CUDA hosts if available
+easyocr>=1.7
+
+# Vector store (file-based, no external service)
+chromadb>=0.5
+pysqlite3-binary>=0.5  # bundles modern SQLite for WSL2/older Linux
+
+# Utilities
+Pillow>=10.0
+numpy>=1.24
