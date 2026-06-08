@@ -1051,15 +1051,20 @@ function showSearchSkeleton() {
 // ── AI mode toggle wiring ─────────────────────────────────────────────────────
 const modeToggleInput = document.getElementById('mode-toggle-input');
 const modeToggleEl = document.getElementById('mode-toggle');
-const modeToggleLabel = document.getElementById('mode-toggle-label');
+const searchSubmitBtn = document.querySelector('#search-form button[type=submit]');
+
+function setSearchBusy(busy) {
+  modeToggleInput.disabled = busy;
+  searchSubmitBtn.disabled = busy;
+  modeToggleEl.style.opacity = busy ? '0.5' : '';
+}
 
 modeToggleInput.addEventListener('change', () => {
   state.search.mode = modeToggleInput.checked ? 'enhanced' : 'standard';
   modeToggleEl.classList.toggle('active', modeToggleInput.checked);
-  if (!modeToggleInput.checked) {
-    document.getElementById('intent-banner').classList.remove('visible');
-    state.search.lastPlan = null;
-  }
+  document.getElementById('intent-banner').classList.remove('visible');
+  state.search.lastPlan = null;
+  if (state.search.query) runSearch(state.search.query);
 });
 
 document.getElementById('intent-queries-btn').addEventListener('click', () => {
@@ -1075,14 +1080,13 @@ function showIntentBanner(plan) {
   const allQueries = [...(plan.text_queries || []), ...(plan.visual_queries || [])];
   document.getElementById('intent-queries-list').innerHTML =
     allQueries.map(q => `<span class="intent-query-chip">${esc(q)}</span>`).join('');
+  // reset expand state
+  document.getElementById('intent-queries-wrap').classList.remove('open');
+  document.getElementById('intent-queries-btn').textContent = 'show queries ▾';
   document.getElementById('intent-banner').classList.add('visible');
 }
 
-document.getElementById('search-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const q = document.getElementById('query-input').value.trim();
-  if (!q) return;
-
+async function runSearch(q) {
   const isEnhanced = state.search.mode === 'enhanced';
   state.search.query = q;
   state.search.page = 1;
@@ -1091,6 +1095,7 @@ document.getElementById('search-form').addEventListener('submit', async e => {
   document.getElementById('results-count').textContent = isEnhanced ? 'AI is analyzing your query…' : 'Searching…';
   document.getElementById('intent-banner').classList.remove('visible');
   showSearchSkeleton();
+  setSearchBusy(true);
 
   try {
     const url = '/api/search/?q=' + encodeURIComponent(q) + '&n=50' + (isEnhanced ? '&mode=enhanced' : '');
@@ -1111,7 +1116,15 @@ document.getElementById('search-form').addEventListener('submit', async e => {
     toast('Search failed', 'error');
     state.search.allResults = [];
     renderSearchPage();
+  } finally {
+    setSearchBusy(false);
   }
+}
+
+document.getElementById('search-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const q = document.getElementById('query-input').value.trim();
+  if (q) runSearch(q);
 });
 
 document.querySelectorAll('#search-filters .chip').forEach(chip => {
