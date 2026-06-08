@@ -1,3 +1,4 @@
+import logging
 import re
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .models import Video, Clip, IndexingJob
 from .pipeline import embedder
+
+logger = logging.getLogger(__name__)
 
 
 def index(request):
@@ -61,6 +64,123 @@ def _overall_score(semantic: float, tag_match: float) -> float:
     return round(min(1.0, max(0.0, overall)), 4)
 
 
+def _enhanced_search(query: str, n_results: int):
+    """
+    Two-step LLM-enhanced search via AWS Bedrock.
+
+    Step 1 — Query Planner: LLM expands the query into multiple ChromaDB variants + infers intent.
+    Step 2 — Multi-query retrieval: runs all variants against both ChromaDB collections, fuses with RRF.
+    Step 3 — LLM Reranker: re-orders ~30 candidates by true relevance to the original intent.
+
+    Returns a JsonResponse with the same field structure as the standard search, plus:
+      - llm_reasoning: why this clip matched (per result)
+      - search_intent: the LLM-inferred intent (top-level, useful for debugging)
+      - plan: the full query plan (top-level)
+      - mode: "enhanced"
+    """
+    from .pipeline.bedrock_search import BedrockSearchEnhancer, _multi_query_retrieve
+
+    enhancer = BedrockSearchEnhancer()
+
+    # Step 1: understand the query
+    plan = enhancer.plan_query(query)
+    intent = plan.get('intent', query)
+    text_queries = plan.get('text_queries', [query])
+    visual_queries = plan.get('visual_queries', [query])
+
+    logger.info("Enhanced search plan for %r: intent=%r, text_q=%s, visual_q=%s",
+                query, intent, text_queries, visual_queries)
+
+    # Step 2: multi-query ChromaDB retrieval with Reciprocal Rank Fusion
+    candidate_ids = _multi_query_retrieve(
+        text_queries=text_queries,
+        visual_queries=visual_queries,
+        n_per_query=15,
+    )
+
+    if not candidate_ids:
+        return JsonResponse({'results': [], 'total': 0, 'mode': 'enhanced'})
+
+    # Bulk-fetch Clip objects, keyed by string ID to match ChromaDB's string IDs
+    clips_by_id: dict[str, Clip] = {}
+    for clip in (
+        Clip.objects
+        .select_related('video')
+        .prefetch_related('keyframes')
+        .filter(id__in=[int(cid) for cid in candidate_ids])
+    ):
+        clips_by_id[str(clip.id)] = clip
+
+    # Preserve RRF order for the reranker
+    ordered_candidates = [
+        clips_by_id[cid] for cid in candidate_ids if cid in clips_by_id
+    ]
+
+    # Step 3: LLM reranking
+    ranked = enhancer.rerank(query, intent, ordered_candidates)
+
+    # Build response — same shape as standard search, with two extra per-result fields
+    query_tokens = _tokenize(query)
+    results = []
+
+    for item in ranked:
+        clip = clips_by_id.get(str(item.get('clip_id', '')))
+        if clip is None:
+            continue  # drop hallucinated IDs
+
+        tag_match = _matched_tag_confidence(clip, query_tokens)
+        # LLM-selected clips passed relevance judgment; use 0.8 as the semantic base
+        # so _overall_score can still differentiate via the tag boost
+        semantic = 0.8
+        overall = _overall_score(semantic, tag_match)
+
+        actions = list(clip.actions_detected or [])
+        if not actions and clip.action_label:
+            actions = [{'label': clip.action_label, 'confidence': clip.action_confidence or 0}]
+
+        ocr = list(clip.ocr_blocks or [])
+        if not ocr and clip.ocr_text:
+            ocr = [{'text': clip.ocr_text, 'confidence': 0.5}]
+
+        kf = clip.keyframes.first()
+        results.append({
+            'clip_id': clip.id,
+            'video_id': clip.video.id,
+            'video_filename': clip.video.filename,
+            'video_url': clip.video.video_url,
+            'start_sec': clip.start_sec,
+            'end_sec': clip.end_sec,
+            'score': overall,
+            'semantic': semantic,
+            'text_sim': 0.0,
+            'visual_sim': 0.0,
+            'tag_match': tag_match,
+            'caption': clip.caption,
+            'caption_confidence': clip.caption_confidence,
+            'ocr_text': clip.ocr_text,
+            'ocr': ocr,
+            'action_label': clip.action_label,
+            'action_confidence': clip.action_confidence,
+            'actions': actions,
+            'objects': list(clip.objects_detected or []),
+            'keyframe_url': kf.url if kf else '',
+            # Enhanced-mode extras
+            'llm_reasoning': item.get('reasoning', ''),
+            'search_intent': intent,
+        })
+
+    return JsonResponse({
+        'results': results,
+        'total': len(results),
+        'mode': 'enhanced',
+        'plan': {
+            'intent': intent,
+            'text_queries': text_queries,
+            'visual_queries': visual_queries,
+        },
+    })
+
+
 def _serialize_video(v):
     job = getattr(v, 'job', None)
     return {
@@ -80,6 +200,7 @@ def _serialize_video(v):
 @require_GET
 def api_search(request):
     query = request.GET.get('q', '').strip()
+    mode = request.GET.get('mode', 'standard').strip()
     try:
         n_results = min(int(request.GET.get('n', 50)), 100)
     except (TypeError, ValueError):
@@ -87,6 +208,13 @@ def api_search(request):
 
     if not query:
         return JsonResponse({'results': [], 'total': 0})
+
+    if mode == 'enhanced':
+        try:
+            return _enhanced_search(query, n_results)
+        except Exception as exc:
+            logger.warning("Enhanced search failed, falling back to standard: %s", exc)
+            # fall through to standard search
 
     try:
         hits = embedder.search(query, n_results=n_results)

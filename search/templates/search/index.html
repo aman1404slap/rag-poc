@@ -498,6 +498,116 @@
       .main { margin-left: 64px; }
       .kpi-pills { display: none; }
     }
+
+    /* ── AI mode toggle ────────────────────────────────────────────── */
+    .mode-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+      padding: 0 0.25rem;
+      border-left: 1px solid var(--border);
+      margin-left: 0.25rem;
+    }
+    .mode-toggle-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
+      transition: color 0.15s;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      top: 3px; left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
+    .mode-toggle.active .mode-toggle-label { color: var(--accent); }
+
+    /* ── Intent banner ─────────────────────────────────────────────── */
+    .intent-banner {
+      display: none;
+      margin-top: 0.65rem;
+      padding: 0.55rem 0.85rem;
+      background: var(--accent-light);
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      gap: 0.75rem;
+      align-items: flex-start;
+    }
+    .intent-banner.visible { display: flex; }
+    .intent-banner strong { color: var(--accent); white-space: nowrap; }
+    .intent-queries { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+    .intent-query-chip {
+      font-size: 0.68rem;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #93c5fd;
+    }
+    .intent-details { flex: 1; min-width: 0; }
+    .intent-details p { margin: 0 0 0.25rem; }
+    .intent-toggle-btn {
+      font-size: 0.68rem;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      white-space: nowrap;
+    }
+    .intent-queries-wrap { display: none; }
+    .intent-queries-wrap.open { display: block; }
+
+    /* ── AI badge on result cards ──────────────────────────────────── */
+    .ai-badge {
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #fff;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+    .ai-reasoning {
+      font-size: 0.72rem;
+      color: #1e40af;
+      background: #eff6ff;
+      border-left: 2px solid var(--accent);
+      padding: 0.2rem 0.45rem;
+      margin-top: 4px;
+      border-radius: 0 4px 4px 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -547,8 +657,24 @@
         <div class="search-bar-wrap">
           <form id="search-form" class="search-bar">
             <input type="search" id="query-input" placeholder="Search by object, action, or description…" autocomplete="off">
+            <div class="mode-toggle" id="mode-toggle">
+              <label class="mode-toggle-label" for="mode-toggle-input" id="mode-toggle-label">AI</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="mode-toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
             <button type="submit" class="btn btn-primary">Search</button>
           </form>
+          <div id="intent-banner" class="intent-banner">
+            <div class="intent-details">
+              <p><strong>Intent:</strong> <span id="intent-text"></span></p>
+              <button type="button" class="intent-toggle-btn" id="intent-queries-btn">show queries ▾</button>
+              <div class="intent-queries-wrap" id="intent-queries-wrap">
+                <div class="intent-queries" id="intent-queries-list"></div>
+              </div>
+            </div>
+          </div>
           <div class="filter-chips" id="search-filters">
             <button type="button" class="chip" data-filter="score60">Score ≥ 60%</button>
             <button type="button" class="chip" data-filter="score80">Score ≥ 80%</button>
@@ -693,6 +819,8 @@ const state = {
     pageSize: 10,
     filters: new Set(),
     selectedClipId: null,
+    mode: 'standard',   // 'standard' | 'enhanced'
+    lastPlan: null,     // plan returned by enhanced search
   },
   library: {
     page: 1,
@@ -883,16 +1011,19 @@ function renderSearchPage() {
 
     const tags = buildResultTags(r);
 
+    const isAI = !!r.llm_reasoning;
     card.innerHTML = `
       <img src="${esc(r.keyframe_url)}" alt="" onerror="this.style.visibility='hidden'">
       <div class="result-meta">
         <div class="result-header">
           <span class="result-name" title="${esc(r.video_filename)}">${esc(r.video_filename)}</span>
+          ${isAI ? '<span class="ai-badge">AI</span>' : ''}
           <span class="score-badge">${Math.round(r.score * 100)}%</span>
         </div>
         <div class="result-time">${fmtTime(r.start_sec)} – ${fmtTime(r.end_sec)}</div>
         <div class="result-caption" title="${esc(r.caption)}">${esc(r.caption) || '<em style="color:#94a3b8">no caption</em>'}</div>
         <div class="tags">${tags}</div>
+        ${isAI ? `<div class="ai-reasoning" title="${esc(r.llm_reasoning)}">${esc(r.llm_reasoning)}</div>` : ''}
       </div>`;
 
     card.addEventListener('click', () => {
@@ -917,25 +1048,63 @@ function showSearchSkeleton() {
     Array(5).fill('<div class="skeleton skeleton-card"></div>').join('');
 }
 
+// ── AI mode toggle wiring ─────────────────────────────────────────────────────
+const modeToggleInput = document.getElementById('mode-toggle-input');
+const modeToggleEl = document.getElementById('mode-toggle');
+const modeToggleLabel = document.getElementById('mode-toggle-label');
+
+modeToggleInput.addEventListener('change', () => {
+  state.search.mode = modeToggleInput.checked ? 'enhanced' : 'standard';
+  modeToggleEl.classList.toggle('active', modeToggleInput.checked);
+  if (!modeToggleInput.checked) {
+    document.getElementById('intent-banner').classList.remove('visible');
+    state.search.lastPlan = null;
+  }
+});
+
+document.getElementById('intent-queries-btn').addEventListener('click', () => {
+  const wrap = document.getElementById('intent-queries-wrap');
+  const btn = document.getElementById('intent-queries-btn');
+  const open = wrap.classList.toggle('open');
+  btn.textContent = open ? 'hide queries ▴' : 'show queries ▾';
+});
+
+function showIntentBanner(plan) {
+  if (!plan) { document.getElementById('intent-banner').classList.remove('visible'); return; }
+  document.getElementById('intent-text').textContent = plan.intent || '';
+  const allQueries = [...(plan.text_queries || []), ...(plan.visual_queries || [])];
+  document.getElementById('intent-queries-list').innerHTML =
+    allQueries.map(q => `<span class="intent-query-chip">${esc(q)}</span>`).join('');
+  document.getElementById('intent-banner').classList.add('visible');
+}
+
 document.getElementById('search-form').addEventListener('submit', async e => {
   e.preventDefault();
   const q = document.getElementById('query-input').value.trim();
   if (!q) return;
 
+  const isEnhanced = state.search.mode === 'enhanced';
   state.search.query = q;
   state.search.page = 1;
   state.search.selectedClipId = null;
-  document.getElementById('results-count').textContent = 'Searching…';
+  state.search.lastPlan = null;
+  document.getElementById('results-count').textContent = isEnhanced ? 'AI is analyzing your query…' : 'Searching…';
+  document.getElementById('intent-banner').classList.remove('visible');
   showSearchSkeleton();
 
   try {
-    const resp = await fetch('/api/search/?q=' + encodeURIComponent(q) + '&n=50');
+    const url = '/api/search/?q=' + encodeURIComponent(q) + '&n=50' + (isEnhanced ? '&mode=enhanced' : '');
+    const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) {
       toast('Search failed: ' + data.error, 'error');
       state.search.allResults = [];
     } else {
       state.search.allResults = data.results || [];
+      if (data.plan) {
+        state.search.lastPlan = data.plan;
+        showIntentBanner(data.plan);
+      }
     }
     renderSearchPage();
   } catch (err) {
@@ -1001,14 +1170,20 @@ function previewClip(r) {
   }).filter(Boolean).join(', ');
   const ocrLines = (r.ocr || []).map(b => `${esc((b.text || '').slice(0, 80))} (${Math.round((b.confidence || 0) * 100)}%)`).join('<br>');
 
+  const scoreLine = r.llm_reasoning
+    ? `<dt>Match</dt><dd><strong>${Math.round(r.score * 100)}%</strong> <span class="ai-badge" style="vertical-align:middle">AI ranked</span></dd>
+       <dt>AI reasoning</dt><dd style="color:#1e40af;font-style:italic">${esc(r.llm_reasoning)}</dd>
+       ${r.search_intent ? `<dt>Search intent</dt><dd style="color:var(--muted)">${esc(r.search_intent)}</dd>` : ''}`
+    : `<dt>Overall match</dt><dd><strong>${Math.round(r.score * 100)}%</strong></dd>
+       <dt>Breakdown</dt><dd class="score-breakdown">
+         Semantic ${Math.round((r.semantic || 0) * 100)}% ·
+         Tag match ${Math.round((r.tag_match || 0) * 100)}% ·
+         Text ${Math.round((r.text_sim || 0) * 100)}% ·
+         Visual ${Math.round((r.visual_sim || 0) * 100)}%
+       </dd>`;
+
   details.innerHTML = `
-    <dt>Overall match</dt><dd><strong>${Math.round(r.score * 100)}%</strong></dd>
-    <dt>Breakdown</dt><dd class="score-breakdown">
-      Semantic ${Math.round((r.semantic || 0) * 100)}% ·
-      Tag match ${Math.round((r.tag_match || 0) * 100)}% ·
-      Text ${Math.round((r.text_sim || 0) * 100)}% ·
-      Visual ${Math.round((r.visual_sim || 0) * 100)}%
-    </dd>
+    ${scoreLine}
     <dt>Video</dt><dd>${esc(r.video_filename)}</dd>
     <dt>Time range</dt><dd>${fmtTime(r.start_sec)} – ${fmtTime(r.end_sec)}</dd>
     ${r.caption ? `<dt>Caption</dt><dd>${esc(r.caption)}${r.caption_confidence != null ? ` <small>(${Math.round(r.caption_confidence * 100)}%)</small>` : ''}</dd>` : ''}
