@@ -15,13 +15,18 @@ logger = logging.getLogger(__name__)
 
 _bedrock_client = None
 
-_SCHEMA_CONTEXT = """
+def _build_schema_context() -> str:
+    from django.conf import settings
+    vocab = settings.ML.get('ACTION_VOCAB', [])
+    vocab_line = ', '.join(vocab) if vocab else '(not configured)'
+    return f"""
 You are helping search a video clip database. Each video clip has been analyzed and indexed with:
 
 TEXT CHANNEL (sentence-transformer embeddings):
 - caption: AI-generated natural language description of what happens visually
 - objects_detected: physical objects visible in the frame (e.g. "laptop", "whiteboard", "person", "car")
-- actions_detected: activities occurring (e.g. "walking", "presenting", "typing", "cooking")
+- actions_detected: activities occurring — detected using this exact vocabulary:
+  {vocab_line}
 - ocr_text: text visible on screen (code, slides, UI elements, subtitles)
 
 VISUAL CHANNEL (CLIP image embeddings of keyframe):
@@ -30,6 +35,7 @@ VISUAL CHANNEL (CLIP image embeddings of keyframe):
 SEARCH STRATEGY:
 - Text channel: best for semantic content, context, what is happening
 - Visual channel: best for visual appearance, scene type, colors, composition
+- For action-based queries, prefer the exact vocabulary terms listed above over synonyms
 - Generating multiple query variants with different phrasings improves recall significantly
 """
 
@@ -135,7 +141,7 @@ class BedrockSearchEnhancer:
         response = client.messages.create(
             model=model,
             max_tokens=1024,
-            system=_SCHEMA_CONTEXT,
+            system=_build_schema_context(),
             messages=[{
                 "role": "user",
                 "content": (

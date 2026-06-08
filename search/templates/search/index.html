@@ -664,6 +664,10 @@
                 <span class="toggle-track"></span>
               </label>
             </div>
+            <button type="button" class="btn btn-ghost" id="retry-btn" style="display:none" title="Re-run search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Retry
+            </button>
             <button type="submit" class="btn btn-primary">Search</button>
           </form>
           <div id="intent-banner" class="intent-banner">
@@ -1052,10 +1056,16 @@ function showSearchSkeleton() {
 const modeToggleInput = document.getElementById('mode-toggle-input');
 const modeToggleEl = document.getElementById('mode-toggle');
 const searchSubmitBtn = document.querySelector('#search-form button[type=submit]');
+const retryBtn = document.getElementById('retry-btn');
+
+retryBtn.addEventListener('click', () => {
+  if (state.search.query) runSearch(state.search.query);
+});
 
 function setSearchBusy(busy) {
   modeToggleInput.disabled = busy;
   searchSubmitBtn.disabled = busy;
+  retryBtn.disabled = busy;
   modeToggleEl.style.opacity = busy ? '0.5' : '';
 }
 
@@ -1118,6 +1128,7 @@ async function runSearch(q) {
     renderSearchPage();
   } finally {
     setSearchBusy(false);
+    retryBtn.style.display = '';
   }
 }
 
